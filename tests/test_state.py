@@ -2,6 +2,8 @@
 changed in the cloud, and leave up-to-date files alone, so resumed and repeated runs are cheap
 and backups stay current."""
 
+import os
+
 import FusionExport as fe
 
 DESIGN_FMT = {"f3d": True, "step": True, "dxf": False, "pdf": True, "dwg": False}
@@ -114,3 +116,17 @@ def test_native_electronics_files_are_left_out(tmp_path):
     library = (str(tmp_path), "Power_Symbols", "id-5", "flbr", 1)
     assert fe.kind("flbr") is None
     assert fe.todo(library, dict(DESIGN_FMT, orig=True), {}) == []
+
+
+def test_upload_keeps_its_extension_once(tmp_path):
+    named = (str(tmp_path), "Door Panel Left.dxf", "id-4", "dxf", 1)
+    bare = (str(tmp_path), "Reflector 2", "id-6", "ste", 1)
+    assert fe.upload_path(named) == str(tmp_path / "Door Panel Left.dxf")
+    assert fe.upload_path(bare) == str(tmp_path / "Reflector 2.ste")
+
+
+def test_upload_cannot_escape_its_folder(tmp_path):
+    # Cloud names are not trusted: the export name comes from safe(), and so must the extension.
+    item = (str(tmp_path), fe.safe("..\\..\\evil"), "id-7", "../x", 1)
+    path = fe.upload_path(item)
+    assert os.path.dirname(path) == str(tmp_path)

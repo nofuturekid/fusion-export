@@ -122,6 +122,16 @@ def output_exists(folder, name, fmt_key):
     return os.path.exists(f"{base}.{fmt_key}")
 
 
+def upload_path(item):
+    """Target file of an uploaded file: its export name, plus its extension if the name lacks
+    it. Both are cleaned like every other name, so the file stays inside its folder."""
+    folder, name, _, ext, _ = item
+    ext = safe(ext)
+    if not name.lower().endswith("." + ext.lower()):
+        name = f"{name}.{ext}"
+    return os.path.join(folder, name)
+
+
 def todo(item, fmt, state, force=False):
     """Formats to (re)write for a scanned item (folder, name, file id, ext, version).
 
@@ -453,9 +463,10 @@ class Run:
         return notes
 
     def download(self, data_file, item):
-        """An uploaded file as it is, into its folder under its own name."""
+        """An uploaded file as it is, under its export name (never the raw cloud name, which
+        could hold path separators)."""
         os.makedirs(item[0], exist_ok=True)
-        if not data_file.download(item[0], None):
+        if not data_file.download(upload_path(item), None):
             raise RuntimeError("download returned False")
         record(self.state, item, ["orig"])
         save_json(self.state_path, self.state)
