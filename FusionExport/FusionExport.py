@@ -66,6 +66,26 @@ FORMATS = [  # (key, dialog label, default, file kind it applies to)
     ("dwg", "Drawings as DWG (preview API)", False, "drawing"),
     ("orig", "Other files as uploaded (DXF, STEP, images, ...)", True, "upload"),
 ]
+PROFILES = [  # (key, dialog label, formats); None = the checkboxes ("Custom")
+    (
+        "complete",
+        "Complete backup (archive, STEP, sketches, drawing PDF, uploads)",
+        {"f3d", "step", "dxf", "pdf", "orig"},
+    ),
+    ("archive", "Fusion archives and uploaded files", {"f3d", "orig"}),
+    ("step", "STEP only (for other CAD software)", {"step"}),
+    ("drawings", "Drawings as PDF only", {"pdf"}),
+    ("custom", "Custom ...", None),
+]
+
+
+def profile_formats(profile, custom):
+    """Format switches for a profile key; custom holds the checkbox values for "Custom"."""
+    chosen = next((fmts for key, _, fmts in PROFILES if key == profile), None)
+    if chosen is None:
+        return {key: bool(custom.get(key)) for key, _, _, _ in FORMATS}
+    return {key: key in chosen for key, _, _, _ in FORMATS}
+
 
 handlers = []
 project_ids = {}  # dialog input id -> cloud project id (cloud ids are not valid input ids)
@@ -674,7 +694,8 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
         ]
         params = {
             "scope": inputs.itemById("scope").selectedItem.index,
-            "fmt": {key: inputs.itemById(key).value for key, _, _, _ in FORMATS},
+            "profile": PROFILES[inputs.itemById("profile").selectedItem.index][0],
+            "custom": {key: inputs.itemById(key).value for key, _, _, _ in FORMATS},
             "subfolders": inputs.itemById("subfolders").value,
             "cloud_path": inputs.itemById("cloud_path").value,
             "projects": selected,
@@ -683,6 +704,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
         }
         settings = load_settings()
         settings.update({k: v for k, v in params.items() if k not in ("force", "scan_only")})
+        params["fmt"] = profile_formats(params["profile"], params["custom"])
         settings["update_check"] = inputs.itemById("update_check").value
         save_settings(settings)
         adsk.core.Application.get().fireCustomEvent(EVENT_ID, json.dumps(params))
@@ -846,6 +868,9 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
                 EVERYTHING_SCOPE,
             )
             args.inputs.itemById("cloud_path").isEnabled = index != EVERYTHING_SCOPE
+        elif args.input.id == "profile":
+            custom = PROFILES[args.input.selectedItem.index][2] is None
+            args.inputs.itemById("formats").isVisible = custom
 
 
 class CreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -871,9 +896,18 @@ class CreatedHandler(adsk.core.CommandCreatedEventHandler):
             settings.get("cloud_path", True),
         )
         keep.isEnabled = scope != EVERYTHING_SCOPE
-        saved = settings.get("fmt", {})
+        profile = settings.get("profile", "complete")
+        content = inputs.addDropDownCommandInput(
+            "profile", "Content", adsk.core.DropDownStyles.TextListDropDownStyle
+        )
+        for key, label, _ in PROFILES:
+            content.listItems.add(label, key == profile)
+        formats = inputs.addGroupCommandInput("formats", "Formats")
+        formats.isExpanded = True
+        formats.isVisible = profile == "custom"
+        saved = settings.get("custom", {})
         for key, label, default, _ in FORMATS:
-            inputs.addBoolValueInput(key, label, True, "", saved.get(key, default))
+            formats.children.addBoolValueInput(key, label, True, "", saved.get(key, default))
         inputs.addBoolValueInput("force", "Re-export (overwrite up-to-date files)", True, "", False)
         inputs.addBoolValueInput("scan_only", "Scan only (no export)", True, "", False)
         inputs.addBoolValueInput(

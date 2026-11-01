@@ -14,8 +14,9 @@ the change) are credited at the end of their line as `(#N, thanks @handle)`.
 ### Added
 
 - Fusion Export button in Utilities > Add-Ins with a dialog for the scope (active document,
-  Data Panel folder, project, selected projects, everything), subfolders on or off, formats,
-  re-export and scan only.
+  Data Panel folder, project, selected projects, everything), subfolders on or off, content
+  profiles (complete backup, archives, STEP, drawing PDF, or custom formats), re-export and
+  scan only (#26).
 - Exports designs as Fusion archive (`.f3d`, or `.f3z` with external references), STEP and
   sketch DXF, and drawings as PDF and DWG.
 - Files uploaded to Fusion (DXF, STEP, images, ...) are downloaded as they are (#18).

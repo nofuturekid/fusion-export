@@ -55,7 +55,13 @@ Click **Fusion Export** and choose:
   target, so exports of different folders add up to one tree. Off puts the chosen folder's or
   project's content straight into the target folder (with *Selected projects*, one folder per
   project); use it to hand a folder to someone. *Everything* always keeps the path.
-- **Formats**: tick what you need.
+- **Content**: what to write for each file.
+  - *Complete backup* (default): Fusion archive, STEP and sketch DXF for designs, PDF for
+    drawings, uploaded files as they are.
+  - *Fusion archives and uploaded files*: everything needed to restore into Fusion.
+  - *STEP only*: for other CAD software.
+  - *Drawings as PDF only*
+  - *Custom ...*: shows one checkbox per format, including drawing DWG.
 - **Re-export**: write all ticked formats again, even when they are up to date.
 - **Scan only**: list the files and count what is left to export, without exporting.
 
