@@ -14,12 +14,17 @@ with "Keep cloud folder path" off, straight in <target>. <target>/.fusion-export
 """
 
 import datetime
+import hashlib
 import json
 import os
 import re
 import shutil
+import tempfile
+import threading
 import time
 import traceback
+import urllib.request
+import zipfile
 
 import adsk.core
 import adsk.drawing
@@ -27,6 +32,10 @@ import adsk.fusion
 
 CMD_ID = "thomasFusionExport"
 EVENT_ID = "thomasFusionExportRun"
+UPDATE_EVENT_ID = "thomasFusionExportUpdate"
+REPO = "nofuturekid/fusion-export"
+ADDIN_DIR = os.path.dirname(os.path.abspath(__file__))
+CHECK_INTERVAL = 24 * 3600  # seconds between update checks
 PANEL_ID = "SolidScriptsAddinsPanel"
 MAX_NAME = 80  # keep Windows paths below 260 characters
 SETTINGS = os.path.join(os.path.dirname(__file__), "settings.json")
@@ -474,6 +483,131 @@ def export_items(app, ui, run, items):
         progress.hide()
 
 
+# --- update check ----------------------------------------------------------------
+
+
+def parse_version(text):
+    """'v1.2.3' or '1.2.3' -> (1, 2, 3); None if it is not X.Y.Z."""
+    m = re.fullmatch(r"v?(\d+)\.(\d+)\.(\d+)", text.strip())
+    return tuple(int(x) for x in m.groups()) if m else None
+
+
+def installed_version():
+    return load_json(os.path.join(ADDIN_DIR, "FusionExport.manifest"), {}).get("version", "0.0.0")
+
+
+def is_newer(candidate, current):
+    new, cur = parse_version(candidate), parse_version(current)
+    return bool(new and cur and new > cur)
+
+
+def check_due(settings, now):
+    """Whether to ask GitHub now: the check is on, and it never ran or the last one is a
+    day old."""
+    if not settings.get("update_check", True):
+        return False
+    last = settings.get("update_checked")
+    return last is None or now - last >= CHECK_INTERVAL
+
+
+def checksum_for(sums_text, filename):
+    """SHA-256 for filename from a sha256sum-style SHA256SUMS file, or None."""
+    for line in sums_text.splitlines():
+        parts = line.split()
+        if len(parts) == 2 and parts[1].lstrip("*") == filename:
+            return parts[0].lower()
+    return None
+
+
+def fetch(url, timeout=20):
+    req = urllib.request.Request(url, headers={"User-Agent": "fusion-export-addin"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        return resp.read()
+
+
+def latest_release():
+    """(version, notes, {asset name: url}) of the latest GitHub release."""
+    data = json.loads(fetch(f"https://api.github.com/repos/{REPO}/releases/latest"))
+    assets = {a["name"]: a["browser_download_url"] for a in data.get("assets", [])}
+    return data["tag_name"].lstrip("v"), data.get("body") or "", assets
+
+
+def install_release(version, assets):
+    """Download, verify and unpack the release zip over the add-in folder. settings.json
+    stays. The new code runs after a Fusion restart."""
+    zip_name = f"FusionExport-{version}.zip"
+    if zip_name not in assets or "SHA256SUMS" not in assets:
+        raise RuntimeError(f"release {version} lacks {zip_name} or SHA256SUMS")
+    expected = checksum_for(fetch(assets["SHA256SUMS"]).decode(), zip_name)
+    payload = fetch(assets[zip_name], timeout=120)
+    if not expected or hashlib.sha256(payload).hexdigest() != expected:
+        raise RuntimeError("checksum mismatch, nothing installed")
+    with tempfile.TemporaryDirectory() as tmp:
+        zpath = os.path.join(tmp, zip_name)
+        with open(zpath, "wb") as f:
+            f.write(payload)
+        with zipfile.ZipFile(zpath) as z:
+            for member in z.namelist():  # no absolute paths or ../ in the archive
+                if member.startswith("/") or ".." in member.split("/"):
+                    raise RuntimeError(f"unsafe path in archive: {member}")
+            z.extractall(tmp)
+        src = os.path.join(tmp, "FusionExport")
+        manifest = load_json(os.path.join(src, "FusionExport.manifest"), {})
+        if manifest.get("version") != version:
+            raise RuntimeError("archive does not hold the expected version")
+        shutil.copytree(src, ADDIN_DIR, dirs_exist_ok=True)
+
+
+def check_in_background():
+    """Ask GitHub in a worker thread so Fusion's start is not delayed; the answer goes to the
+    main thread through a custom event."""
+    settings = load_settings()
+    now = time.time()
+    if not check_due(settings, now):
+        return
+    settings["update_checked"] = now
+    save_settings(settings)
+
+    def work():
+        try:
+            version, notes, assets = latest_release()
+        except Exception:
+            return  # offline or rate limited: try again tomorrow
+        if is_newer(version, installed_version()) and version != settings.get("update_skip"):
+            payload = json.dumps({"version": version, "notes": notes, "assets": assets})
+            adsk.core.Application.get().fireCustomEvent(UPDATE_EVENT_ID, payload)
+
+    threading.Thread(target=work, daemon=True).start()
+
+
+class UpdateHandler(adsk.core.CustomEventHandler):
+    def notify(self, args):
+        ui = adsk.core.Application.get().userInterface
+        try:
+            info = json.loads(args.additionalInfo)
+            version, notes = info["version"], info["notes"].strip()
+            if len(notes) > 1200:
+                notes = notes[:1200] + " ..."
+            answer = ui.messageBox(
+                f"Fusion Export {version} is available (installed: {installed_version()}).\n\n"
+                f"{notes}\n\n"
+                "Yes = Install now (takes effect after restarting Fusion)\n"
+                "No = Later (asks again tomorrow)\n"
+                "Cancel = Skip this version",
+                "Fusion Export update",
+                adsk.core.MessageBoxButtonTypes.YesNoCancelButtonType,
+            )
+            if answer == adsk.core.DialogResults.DialogCancel:
+                settings = load_settings()
+                settings["update_skip"] = version
+                save_settings(settings)
+            elif answer == adsk.core.DialogResults.DialogYes:
+                install_release(version, info["assets"])
+                ui.messageBox(f"Fusion Export {version} is installed. Restart Fusion to use it.")
+        except Exception:
+            ui.messageBox("Update failed, nothing changed:\n" + traceback.format_exc())
+
+
 # --- command -------------------------------------------------------------------
 
 
@@ -500,6 +634,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
         }
         settings = load_settings()
         settings.update({k: v for k, v in params.items() if k not in ("force", "scan_only")})
+        settings["update_check"] = inputs.itemById("update_check").value
         save_settings(settings)
         adsk.core.Application.get().fireCustomEvent(EVENT_ID, json.dumps(params))
 
@@ -671,6 +806,13 @@ class CreatedHandler(adsk.core.CommandCreatedEventHandler):
             inputs.addBoolValueInput(key, label, True, "", saved.get(key, default))
         inputs.addBoolValueInput("force", "Re-export (overwrite up-to-date files)", True, "", False)
         inputs.addBoolValueInput("scan_only", "Scan only (no export)", True, "", False)
+        inputs.addBoolValueInput(
+            "update_check",
+            "Check for updates once a day",
+            True,
+            "",
+            settings.get("update_check", True),
+        )
 
         group = inputs.addGroupCommandInput("projects", "Projects")
         group.isExpanded = True
@@ -705,6 +847,13 @@ def run(context):
         on_run = RunExportHandler()
         app.registerCustomEvent(EVENT_ID).add(on_run)
         handlers.append(on_run)
+        try:
+            app.unregisterCustomEvent(UPDATE_EVENT_ID)
+        except Exception:
+            pass
+        on_update = UpdateHandler()
+        app.registerCustomEvent(UPDATE_EVENT_ID).add(on_update)
+        handlers.append(on_update)
         cmd_def = ui.commandDefinitions.itemById(CMD_ID)
         if not cmd_def:
             cmd_def = ui.commandDefinitions.addButtonDefinition(
@@ -722,6 +871,7 @@ def run(context):
             control = panel.controls.addCommand(cmd_def)
             control.isPromotedByDefault = True
             control.isPromoted = True
+        check_in_background()
     except Exception:
         ui.messageBox("Fusion Export failed to start:\n" + traceback.format_exc())
 
@@ -730,6 +880,7 @@ def stop(context):
     app = adsk.core.Application.get()
     ui = app.userInterface
     app.unregisterCustomEvent(EVENT_ID)
+    app.unregisterCustomEvent(UPDATE_EVENT_ID)
     panel = ui.allToolbarPanels.itemById(PANEL_ID)
     if panel:
         control = panel.controls.itemById(CMD_ID)

@@ -29,8 +29,13 @@ the target folder instead.
 
 The **Fusion Export** button then sits in **Utilities > Add-Ins**.
 
-To update, replace the folder and restart Fusion. Stop and Run in Scripts and Add-Ins reloads
-the code too, but Fusion reads the version shown there only at start.
+Once a day the add-in asks GitHub for a newer release and offers to install it (the download is
+checked against the release's `SHA256SUMS`; settings are kept; restart Fusion afterwards). *Skip
+this version* stops asking for that version; *Check for updates once a day* in the dialog turns
+the check off.
+
+To update by hand, replace the folder and restart Fusion. Stop and Run in Scripts and Add-Ins
+reloads the code too, but Fusion reads the version shown there only at start.
 
 ## Use
 
