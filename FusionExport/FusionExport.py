@@ -18,6 +18,7 @@ import json
 import os
 import re
 import shutil
+import time
 import traceback
 
 import adsk.core
@@ -29,6 +30,7 @@ EVENT_ID = "thomasFusionExportRun"
 PANEL_ID = "SolidScriptsAddinsPanel"
 MAX_NAME = 80  # keep Windows paths below 260 characters
 SETTINGS = os.path.join(os.path.dirname(__file__), "settings.json")
+META_DIR = ".fusion-export"  # in the target folder: state, scan cache and log
 STATE_FILE = "export-state.json"
 CACHE_FILE = "scan-cache.json"
 LOG_FILE = "export-log.txt"
@@ -146,6 +148,23 @@ def save_json(path, data):
     os.replace(tmp, path)
 
 
+def meta_path(root, name):
+    """Path of a metadata file in <root>/.fusion-export/. Files from versions that kept them
+    in <root> itself are moved there."""
+    folder = os.path.join(root, META_DIR)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, name)
+    old = os.path.join(root, name)
+    if os.path.exists(old) and not os.path.exists(path):
+        os.replace(old, path)
+    return path
+
+
+def append_log(root, line):
+    with open(meta_path(root, LOG_FILE), "a", encoding="utf-8") as f:
+        f.write(line + "\n")
+
+
 def load_settings():
     return load_json(SETTINGS, {})
 
@@ -158,6 +177,10 @@ def save_settings(settings):
 
 
 def items_of(collection):
+    """All items of a Fusion collection. asArray() fetches them in one call where the
+    collection has it, item(i) one by one otherwise."""
+    if hasattr(collection, "asArray"):
+        return list(collection.asArray())
     return [collection.item(i) for i in range(collection.count)]
 
 
@@ -188,17 +211,43 @@ def folder_path(root, folder):
     return os.path.join(project_path(root, folder.parentProject), *reversed(parts))
 
 
-def collect(folder, path, out, tick, recursive):
+class ScanTimer:
+    """Where a scan spends its time, to decide whether a faster source is worth it."""
+
+    def __init__(self):
+        self.folders = 0
+        self.seconds = {"list files": 0.0, "read file details": 0.0, "list folders": 0.0}
+
+    def measure(self, phase, fn):
+        start = time.perf_counter()
+        result = fn()
+        self.seconds[phase] += time.perf_counter() - start
+        return result
+
+    def summary(self, files):
+        total = sum(self.seconds.values())
+        parts = ", ".join(f"{k} {v:.1f} s" for k, v in self.seconds.items())
+        return f"{self.folders} folders, {files} files in {total:.1f} s ({parts})"
+
+
+def collect(folder, path, out, tick, recursive, timer):
     """Append (target folder, export name, file id, extension, version) for the files of
     folder, and of its subfolders when recursive."""
     tick(path)
-    files = [folder.dataFiles.item(i) for i in range(folder.dataFiles.count)]
-    for data_file, name in zip(files, unique_names(f.name for f in files), strict=True):
-        out.append((path, name, data_file.id, data_file.fileExtension, data_file.versionNumber))
+    timer.folders += 1
+    files = timer.measure("list files", lambda: items_of(folder.dataFiles))
+    details = timer.measure(
+        "read file details",
+        lambda: [(f.name, f.id, f.fileExtension, f.versionNumber) for f in files],
+    )
+    for (_, file_id, ext, version), name in zip(
+        details, unique_names(d[0] for d in details), strict=True
+    ):
+        out.append((path, name, file_id, ext, version))
     if recursive:
-        subs = items_of(folder.dataFolders)
+        subs = timer.measure("list folders", lambda: items_of(folder.dataFolders))
         for sub, name in zip(subs, unique_names(s.name for s in subs), strict=True):
-            collect(sub, os.path.join(path, name), out, tick, recursive)
+            collect(sub, os.path.join(path, name), out, tick, recursive, timer)
 
 
 def unique_name(data_file):
@@ -222,6 +271,7 @@ def scan(ui, root, start, recursive):
     dlg.isCancelButtonShown = True
     dlg.show("Fusion export: scanning", "Scanning ...", 0, 1)
     items = []
+    timer = ScanTimer()
 
     def tick(path):
         if dlg.wasCancelled:
@@ -231,11 +281,13 @@ def scan(ui, root, start, recursive):
 
     try:
         for folder, path in start:
-            collect(folder, path, items, tick, recursive)
+            collect(folder, path, items, tick, recursive, timer)
     except Cancelled:
+        append_log(root, f"SCAN\t(cancelled)\t{timer.summary(len(items))}")
         return None
     finally:
         dlg.hide()
+    append_log(root, f"SCAN\t{os.path.relpath(start[0][1], root)}\t{timer.summary(len(items))}")
     return items
 
 
@@ -243,7 +295,7 @@ def scan_cached(ui, root, key, start, recursive):
     """scan() with the result kept in scan-cache.json under key, so a cancelled export of the
     same scope can resume without the slow cloud walk. A reused list carries the cloud versions
     of its scan, so it cannot see changes made since; the question says so and shows its age."""
-    cache_path = os.path.join(root, CACHE_FILE)
+    cache_path = meta_path(root, CACHE_FILE)
     cache = load_json(cache_path, {})
     cached = cache.get(key)
     if isinstance(cached, dict) and all(len(row) == 5 for row in cached.get("items", [])):
@@ -366,9 +418,9 @@ class Run:
     def __init__(self, root, fmt, force):
         self.root, self.fmt, self.force = root, fmt, force
         self.counts = {"OK": 0, "SKIP": 0, "OTHER": 0, "FAIL": 0}
-        self.state_path = os.path.join(root, STATE_FILE)
+        self.state_path = meta_path(root, STATE_FILE)
         self.state = load_json(self.state_path, {})
-        self.log = open(os.path.join(root, LOG_FILE), "a", encoding="utf-8")
+        self.log = open(meta_path(root, LOG_FILE), "a", encoding="utf-8")
 
     def rel(self, item):
         return os.path.relpath(os.path.join(item[0], item[1]), self.root)
@@ -537,7 +589,7 @@ def run_export(app, ui, params):
         return
 
     if scan_only:
-        state = load_json(os.path.join(root, STATE_FILE), {})
+        state = load_json(meta_path(root, STATE_FILE), {})
         designs = sum(kind(it[3]) == "design" for it in items)
         drawings = sum(kind(it[3]) == "drawing" for it in items)
         left = sum(bool(kind(it[3]) and todo(it, fmt, state, force)) for it in items)
@@ -546,7 +598,8 @@ def run_export(app, ui, params):
             f"files: {len(items)}\ndesigns: {designs}\ndrawings: {drawings}\n"
             f"other files: {len(items) - designs - drawings}\n"
             f"to export with the ticked formats: {left}\n\n"
-            "Run the same scope again and answer 'Yes' (Resume) to export without rescanning."
+            "Run the same scope again and answer 'Yes' (Resume) to export without rescanning.\n"
+            f"Scan timing: SCAN line in {meta_path(root, LOG_FILE)}"
         )
         return
 
@@ -560,7 +613,7 @@ def run_export(app, ui, params):
         f"{len(items)} files in scope\n"
         f"exported: {c['OK']}\nup to date: {c['SKIP']}\n"
         f"other files: {c['OTHER']}\nfailed: {c['FAIL']}\n\n"
-        f"Details: {os.path.join(root, LOG_FILE)}"
+        f"Details: {meta_path(root, LOG_FILE)}"
     )
 
 

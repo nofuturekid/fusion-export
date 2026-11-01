@@ -25,4 +25,6 @@ the change) are credited at the end of their line as `(#N, thanks @handle)`.
   the question shows the age of the list and that only a fresh scan finds changes (#1).
 - Sibling folders, projects or hubs whose names only differ in removed characters or case get
   separate target folders (`Name`, `Name_2`) (#2).
-- `export-log.txt` with one line per file and run.
+- `export-log.txt` with one line per file and run, and `SCAN` lines with the scan time per
+  phase (#4).
+- State, scan cache and log live in `.fusion-export/` inside the target folder (#5).

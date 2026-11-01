@@ -60,15 +60,17 @@ A run exports a file only when needed:
 So a cancelled run continues where it stopped, ticking another format later adds just that
 format, and running the same scope again refreshes changed designs: a simple backup.
 
-### Files in the target folder
+### Files in `.fusion-export/`
 
 | File | Purpose |
 |---|---|
 | `export-state.json` | cloud version and exported formats per file |
 | `scan-cache.json` | file lists of earlier scans with their date. A run of the same scope asks: **Yes = Resume** uses the list and starts at once (for continuing a cancelled run), **No = Fresh scan** walks the cloud again. Only a fresh scan sees documents changed, added or renamed since: use it for backups. |
-| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (not a design or drawing) or `FAIL` with the error |
+| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (not a design or drawing) or `FAIL` with the error; `SCAN` lines with how long a scan took and where |
 
-Keep these files with the export: moving the folder moves the state with it.
+All three live in `.fusion-export/` inside the target folder (older exports that kept them in
+the target folder itself are moved there on the next run). Keep that folder with the export:
+moving the target folder moves the state with it.
 
 ### Names
 
