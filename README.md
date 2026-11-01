@@ -13,7 +13,8 @@ at a time.
 | Drawing DWG | `Drawing.dwg` (uses a preview API of Fusion, see below) |
 
 Files land in `<target>/<hub>/<project>/<folders>/`, the same tree as in the Data Panel, so
-partial exports add up to one tree.
+partial exports add up to one tree; with *Keep cloud folder path* off they go straight into
+the target folder instead.
 
 ## Install
 
@@ -42,6 +43,10 @@ Click **Fusion Export** and choose:
   - *Selected projects*: tick them in the list below.
   - *Everything*: all hubs and projects.
 - **Include subfolders**: off exports only the files directly in the chosen folder or project.
+- **Keep cloud folder path**: on (default) puts files under `<hub>/<project>/<folders>/` in the
+  target, so exports of different folders add up to one tree. Off puts the chosen folder's or
+  project's content straight into the target folder (with *Selected projects*, one folder per
+  project); use it to hand a folder to someone. *Everything* always keeps the path.
 - **Formats**: tick what you need.
 - **Re-export**: write all ticked formats again, even when they are up to date.
 - **Scan only**: list the files and count what is left to export, without exporting.

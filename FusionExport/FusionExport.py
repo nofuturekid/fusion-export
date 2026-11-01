@@ -5,8 +5,8 @@ open in the Data Panel, the active document's project, ticked projects or everyt
 without subfolders, as Fusion archive (.f3d, or .f3z with external references), STEP, sketch DXF
 and drawing PDF/DWG.
 
-Files land in <target>/<hub>/<project>/<folders>/, so partial exports merge into one tree. The
-target folder also holds:
+Files land in <target>/<hub>/<project>/<folders>/, so partial exports merge into one tree, or,
+with "Keep cloud folder path" off, straight in <target>. <target>/.fusion-export/ holds:
   export-state.json  cloud version and exported formats per file: a design is exported again
                      when its cloud version changed, otherwise only missing formats are added
   scan-cache.json    file lists of earlier scans, so a scope can be exported without a new scan
@@ -493,6 +493,7 @@ class ExecuteHandler(adsk.core.CommandEventHandler):
             "scope": inputs.itemById("scope").selectedItem.index,
             "fmt": {key: inputs.itemById(key).value for key, _, _, _ in FORMATS},
             "subfolders": inputs.itemById("subfolders").value,
+            "cloud_path": inputs.itemById("cloud_path").value,
             "projects": selected,
             "force": inputs.itemById("force").value,
             "scan_only": inputs.itemById("scan_only").value,
@@ -519,6 +520,8 @@ def ask_root(ui):
 def run_export(app, ui, params):
     scope, fmt = params["scope"], params["fmt"]
     force, scan_only, recursive = params["force"], params["scan_only"], params["subfolders"]
+    # Off: the chosen folder's or project's content goes straight into the target folder.
+    cloud_path = params.get("cloud_path", True) or scope == EVERYTHING_SCOPE
     if scan_only and scope == ACTIVE_SCOPE:
         ui.messageBox("'Scan only' needs a folder, project or 'Everything' scope.")
         return
@@ -546,7 +549,7 @@ def run_export(app, ui, params):
 
     if scope == ACTIVE_SCOPE:
         item = (
-            folder_path(root, active.parentFolder),
+            folder_path(root, active.parentFolder) if cloud_path else root,
             unique_name(active),
             active.id,
             active.fileExtension,
@@ -569,20 +572,25 @@ def run_export(app, ui, params):
         start = [(p.rootFolder, project_path(root, p)) for p in all_projects(app)]
     elif scope == PROJECTS_SCOPE:
         key = "projects:" + ",".join(sorted(params["projects"]))
-        start = [
-            (p.rootFolder, project_path(root, p))
-            for p in all_projects(app)
-            if p.id in params["projects"]
-        ]
+        chosen = [p for p in all_projects(app) if p.id in params["projects"]]
+        if cloud_path:
+            start = [(p.rootFolder, project_path(root, p)) for p in chosen]
+        else:  # one folder per project
+            names = unique_names(p.name for p in chosen)
+            start = [
+                (p.rootFolder, os.path.join(root, n)) for p, n in zip(chosen, names, strict=True)
+            ]
     elif scope == FOLDER_SCOPE:
         key = "folder:" + panel_folder.id
-        start = [(panel_folder, folder_path(root, panel_folder))]
+        start = [(panel_folder, folder_path(root, panel_folder) if cloud_path else root)]
     else:
         project = active.parentProject
         key = "project:" + project.id
-        start = [(project.rootFolder, project_path(root, project))]
+        start = [(project.rootFolder, project_path(root, project) if cloud_path else root)]
     if not recursive:
         key += ":flat"
+    if not cloud_path:
+        key += ":short"
     items = scan_cached(ui, root, key, start, recursive)
     if items is None:
         ui.messageBox("Scan cancelled, nothing exported.")
@@ -632,6 +640,7 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
             index = args.input.selectedItem.index
             args.inputs.itemById("projects").isVisible = index == PROJECTS_SCOPE
             args.inputs.itemById("subfolders").isEnabled = index != ACTIVE_SCOPE
+            args.inputs.itemById("cloud_path").isEnabled = index != EVERYTHING_SCOPE
 
 
 class CreatedHandler(adsk.core.CommandCreatedEventHandler):
@@ -649,6 +658,14 @@ class CreatedHandler(adsk.core.CommandCreatedEventHandler):
             "subfolders", "Include subfolders", True, "", settings.get("subfolders", True)
         )
         sub.isEnabled = scope != ACTIVE_SCOPE
+        keep = inputs.addBoolValueInput(
+            "cloud_path",
+            "Keep cloud folder path (hub/project/folders)",
+            True,
+            "",
+            settings.get("cloud_path", True),
+        )
+        keep.isEnabled = scope != EVERYTHING_SCOPE
         saved = settings.get("fmt", {})
         for key, label, default, _ in FORMATS:
             inputs.addBoolValueInput(key, label, True, "", saved.get(key, default))
