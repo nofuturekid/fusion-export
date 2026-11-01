@@ -30,7 +30,8 @@ the target folder instead.
 The **Fusion Export** button then sits in **Utilities > Add-Ins**.
 
 Once a day the add-in asks GitHub for a newer release and offers to install it (the download is
-checked against the release's `SHA256SUMS`; settings are kept; restart Fusion afterwards). *Skip
+checked against the release's `SHA256SUMS`, which catches broken downloads but is no proof of
+origin, see #13; settings are kept; restart Fusion afterwards). *Skip
 this version* stops asking for that version; *Check for updates once a day* in the dialog turns
 the check off.
 
