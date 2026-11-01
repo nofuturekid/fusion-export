@@ -46,3 +46,24 @@ def test_numbering_is_the_same_on_every_scan():
 
 def test_names_that_only_differ_after_cleaning_do_not_collide():
     assert fe.unique_names(["Tom's", "Toms"]) == ["Toms", "Toms_2"]
+
+
+class Cloud:
+    """Minimal stand-in for a Fusion data object."""
+
+    def __init__(self, id, name):
+        self.id, self.name = id, name
+
+
+def test_sibling_folders_that_clean_to_one_name_stay_apart():
+    # "Tom's" and "Toms" would otherwise share a target folder and mix their files.
+    siblings = [Cloud("a", "Tom's"), Cloud("b", "Toms")]
+    assert fe.name_among(siblings, siblings[0]) == "Toms"
+    assert fe.name_among(siblings, siblings[1]) == "Toms_2"
+
+
+def test_name_among_matches_the_names_a_scan_gives():
+    # A folder export and a full scan must put a folder at the same path.
+    siblings = [Cloud("a", "Part"), Cloud("b", "part"), Cloud("c", "Other")]
+    scanned = fe.unique_names(s.name for s in siblings)
+    assert [fe.name_among(siblings, s) for s in siblings] == scanned

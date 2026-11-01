@@ -65,7 +65,7 @@ format, and running the same scope again refreshes changed designs: a simple bac
 | File | Purpose |
 |---|---|
 | `export-state.json` | cloud version and exported formats per file |
-| `scan-cache.json` | file lists of earlier scans. Walking the cloud folders is slow, so a run of the same scope offers to reuse the list. Answer **No** to rescan; only a rescan sees new, renamed or changed documents. |
+| `scan-cache.json` | file lists of earlier scans with their date. A run of the same scope asks: **Yes = Resume** uses the list and starts at once (for continuing a cancelled run), **No = Fresh scan** walks the cloud again. Only a fresh scan sees documents changed, added or renamed since: use it for backups. |
 | `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (not a design or drawing) or `FAIL` with the error |
 
 Keep these files with the export: moving the folder moves the state with it.

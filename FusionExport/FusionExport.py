@@ -13,6 +13,7 @@ target folder also holds:
   export-log.txt     one line per file and run
 """
 
+import datetime
 import json
 import os
 import re
@@ -156,16 +157,34 @@ def save_settings(settings):
 # --- cloud: where things are and where they go ---------------------------------
 
 
+def items_of(collection):
+    return [collection.item(i) for i in range(collection.count)]
+
+
+def name_among(siblings, target):
+    """Export name of target among its siblings (cloud objects with .id and .name), so two
+    siblings whose names only differ in removed characters or case get separate folders."""
+    for sibling, name in zip(siblings, unique_names(s.name for s in siblings), strict=True):
+        if sibling.id == target.id:
+            return name
+    return safe(target.name)
+
+
 def project_path(root, project):
-    return os.path.join(root, safe(project.parentHub.name), safe(project.name))
+    hub = project.parentHub
+    hubs = items_of(adsk.core.Application.get().data.dataHubs)
+    return os.path.join(
+        root, name_among(hubs, hub), name_among(items_of(hub.dataProjects), project)
+    )
 
 
 def folder_path(root, folder):
     """Target path of a cloud folder: project path plus its folder chain."""
     parts = []
     while not folder.isRoot:
-        parts.append(safe(folder.name))
-        folder = folder.parentFolder
+        parent = folder.parentFolder
+        parts.append(name_among(items_of(parent.dataFolders), folder))
+        folder = parent
     return os.path.join(project_path(root, folder.parentProject), *reversed(parts))
 
 
@@ -177,19 +196,14 @@ def collect(folder, path, out, tick, recursive):
     for data_file, name in zip(files, unique_names(f.name for f in files), strict=True):
         out.append((path, name, data_file.id, data_file.fileExtension, data_file.versionNumber))
     if recursive:
-        for i in range(folder.dataFolders.count):
-            sub = folder.dataFolders.item(i)
-            collect(sub, os.path.join(path, safe(sub.name)), out, tick, recursive)
+        subs = items_of(folder.dataFolders)
+        for sub, name in zip(subs, unique_names(s.name for s in subs), strict=True):
+            collect(sub, os.path.join(path, name), out, tick, recursive)
 
 
 def unique_name(data_file):
     """Export name collect() gives this file inside its folder."""
-    files = data_file.parentFolder.dataFiles
-    files = [files.item(i) for i in range(files.count)]
-    for f, name in zip(files, unique_names(f.name for f in files), strict=True):
-        if f.id == data_file.id:
-            return name
-    return safe(data_file.name)
+    return name_among(items_of(data_file.parentFolder.dataFiles), data_file)
 
 
 def all_projects(app):
@@ -226,26 +240,31 @@ def scan(ui, root, start, recursive):
 
 
 def scan_cached(ui, root, key, start, recursive):
-    """scan() with the result kept in scan-cache.json under key, so repeating an export of the
-    same scope can skip the slow cloud walk. A reused list has the cloud versions of its scan:
-    rescan to pick up changed designs."""
+    """scan() with the result kept in scan-cache.json under key, so a cancelled export of the
+    same scope can resume without the slow cloud walk. A reused list carries the cloud versions
+    of its scan, so it cannot see changes made since; the question says so and shows its age."""
     cache_path = os.path.join(root, CACHE_FILE)
     cache = load_json(cache_path, {})
     cached = cache.get(key)
-    if cached and all(len(row) == 5 for row in cached):
+    if isinstance(cached, dict) and all(len(row) == 5 for row in cached.get("items", [])):
         answer = ui.messageBox(
-            f"This scope was scanned before ({len(cached)} files).\n"
-            "Reuse that file list?\n\n"
-            "Yes: start right away.\n"
-            "No: scan the cloud again (needed to find new, renamed or changed designs).",
+            f"This scope was scanned on {cached.get('scanned', '?')} "
+            f"({len(cached['items'])} files).\n\n"
+            "Yes = Resume: use that list and start right away. Designs changed, added or "
+            "renamed since then are not seen.\n\n"
+            "No = Fresh scan: walk the cloud folders again. Slow, but finds every change. "
+            "Use this for backups.",
             "Fusion export",
             adsk.core.MessageBoxButtonTypes.YesNoButtonType,
         )
         if answer == adsk.core.DialogResults.DialogYes:
-            return [(os.path.join(root, r), n, i, e, v) for r, n, i, e, v in cached]
+            return [(os.path.join(root, r), n, i, e, v) for r, n, i, e, v in cached["items"]]
     items = scan(ui, root, start, recursive)
     if items is not None:
-        cache[key] = [(os.path.relpath(d, root), n, i, e, v) for d, n, i, e, v in items]
+        cache[key] = {
+            "scanned": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
+            "items": [(os.path.relpath(d, root), n, i, e, v) for d, n, i, e, v in items],
+        }
         save_json(cache_path, cache)
     return items
 
@@ -527,7 +546,7 @@ def run_export(app, ui, params):
             f"files: {len(items)}\ndesigns: {designs}\ndrawings: {drawings}\n"
             f"other files: {len(items) - designs - drawings}\n"
             f"to export with the ticked formats: {left}\n\n"
-            "Run the same scope again and answer 'Yes' to export without rescanning."
+            "Run the same scope again and answer 'Yes' (Resume) to export without rescanning."
         )
         return
 
