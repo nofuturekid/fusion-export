@@ -28,7 +28,8 @@ partial exports add up to one tree.
 
 The **Fusion Export** button then sits in **Utilities > Add-Ins**.
 
-To update, replace the folder and stop and run the add-in once.
+To update, replace the folder and restart Fusion. Stop and Run in Scripts and Add-Ins reloads
+the code too, but Fusion reads the version shown there only at start.
 
 ## Use
 
