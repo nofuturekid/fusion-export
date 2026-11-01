@@ -654,7 +654,8 @@ def ask_root(ui):
 
 def run_export(app, ui, params):
     scope, fmt = params["scope"], params["fmt"]
-    force, scan_only, recursive = params["force"], params["scan_only"], params["subfolders"]
+    force, scan_only = params["force"], params["scan_only"]
+    recursive = params["subfolders"] or scope == EVERYTHING_SCOPE
     # Off: the chosen folder's or project's content goes straight into the target folder.
     cloud_path = params.get("cloud_path", True) or scope == EVERYTHING_SCOPE
     if scan_only and scope == ACTIVE_SCOPE:
@@ -774,7 +775,10 @@ class InputChangedHandler(adsk.core.InputChangedEventHandler):
         if args.input.id == "scope":
             index = args.input.selectedItem.index
             args.inputs.itemById("projects").isVisible = index == PROJECTS_SCOPE
-            args.inputs.itemById("subfolders").isEnabled = index != ACTIVE_SCOPE
+            args.inputs.itemById("subfolders").isEnabled = index not in (
+                ACTIVE_SCOPE,
+                EVERYTHING_SCOPE,
+            )
             args.inputs.itemById("cloud_path").isEnabled = index != EVERYTHING_SCOPE
 
 
@@ -792,7 +796,7 @@ class CreatedHandler(adsk.core.CommandCreatedEventHandler):
         sub = inputs.addBoolValueInput(
             "subfolders", "Include subfolders", True, "", settings.get("subfolders", True)
         )
-        sub.isEnabled = scope != ACTIVE_SCOPE
+        sub.isEnabled = scope not in (ACTIVE_SCOPE, EVERYTHING_SCOPE)
         keep = inputs.addBoolValueInput(
             "cloud_path",
             "Keep cloud folder path (hub/project/folders)",

@@ -49,6 +49,7 @@ Click **Fusion Export** and choose:
   - *Selected projects*: tick them in the list below.
   - *Everything*: all hubs and projects.
 - **Include subfolders**: off exports only the files directly in the chosen folder or project.
+  *Everything* always includes them.
 - **Keep cloud folder path**: on (default) puts files under `<hub>/<project>/<folders>/` in the
   target, so exports of different folders add up to one tree. Off puts the chosen folder's or
   project's content straight into the target folder (with *Selected projects*, one folder per
