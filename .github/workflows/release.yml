@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*.*.*']
+
+permissions:
+  contents: read
+
+jobs:
+  # Fails unless the tagged commit is on main, the manifest and pyproject.toml carry the tag's
+  # version and CHANGELOG.md has a section for it; then runs the CI checks.
+  verify:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - run: git merge-base --is-ancestor HEAD origin/main
+      - run: scripts/changelog-section.sh "$GITHUB_REF_NAME" > /dev/null
+      # A venv: the runner's system Python refuses pip installs (PEP 668).
+      - run: |
+          python3 -m venv .venv
+          .venv/bin/pip install ruff==0.17.3 pytest==9.2.0
+      - run: .venv/bin/ruff format --check .
+      - run: .venv/bin/ruff check .
+      - run: .venv/bin/pytest -q
+
+  release:
+    needs: verify
+    runs-on: ubuntu-26.04
+    permissions:
+      contents: write
+      # build provenance attestation: OIDC token and the attestations API
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build zip
+        run: |
+          ver=${GITHUB_REF_NAME#v}
+          mkdir dist
+          cp README.md CHANGELOG.md LICENSE FusionExport/
+          zip -r -X "dist/FusionExport-$ver.zip" FusionExport -x 'FusionExport/settings.json'
+          cd dist && sha256sum FusionExport-* > SHA256SUMS
+      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-checksums: dist/SHA256SUMS
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          scripts/changelog-section.sh "$GITHUB_REF_NAME" > notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "$GITHUB_REF_NAME" \
+            --notes-file notes.md dist/*

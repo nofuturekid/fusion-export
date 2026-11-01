@@ -1,0 +1,7 @@
+__pycache__/
+.pytest_cache/
+.ruff_cache/
+.venv/
+dist/
+# written by the add-in at runtime
+FusionExport/settings.json

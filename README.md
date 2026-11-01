@@ -1,0 +1,106 @@
+# Fusion Export
+
+An add-in for Autodesk Fusion that exports many designs and drawings at once: a whole folder,
+a project, several projects or everything in your account. Fusion itself exports one document
+at a time.
+
+| Format | What you get |
+|---|---|
+| Fusion archive | `Name.f3d`, or `Name.f3z` for designs with external references: the full design with timeline, sketches and parameters |
+| STEP | `Name.step`: the bodies, for other CAD software |
+| Sketch DXF | `Name - Sketches/<sketch>.dxf`: every sketch of every component |
+| Drawing PDF | `Drawing.pdf`: all sheets in one file |
+| Drawing DWG | `Drawing.dwg` (uses a preview API of Fusion, see below) |
+
+Files land in `<target>/<hub>/<project>/<folders>/`, the same tree as in the Data Panel, so
+partial exports add up to one tree.
+
+## Install
+
+1. Download `FusionExport-X.Y.Z.zip` from the
+   [latest release](https://github.com/nofuturekid/fusion-export/releases/latest) and unpack it.
+   You get a folder `FusionExport`.
+2. Move that folder into Fusion's add-in folder:
+   - Windows: `%APPDATA%\Autodesk\Autodesk Fusion 360\API\AddIns\`
+   - macOS: `~/Library/Application Support/Autodesk/Autodesk Fusion 360/API/AddIns/`
+3. In Fusion: **Utilities > Add-Ins > Scripts and Add-Ins**, tab **Add-Ins**, select
+   **FusionExport**, click **Run** and tick **Run on Startup**.
+
+The **Fusion Export** button then sits in **Utilities > Add-Ins**.
+
+To update, replace the folder and stop and run the add-in once.
+
+## Use
+
+Click **Fusion Export** and choose:
+
+- **Export**
+  - *Active document*: the open design or drawing, exported right away.
+  - *Folder open in the Data Panel*: open the folder in the Data Panel first.
+  - *Project of the active document*
+  - *Selected projects*: tick them in the list below.
+  - *Everything*: all hubs and projects.
+- **Include subfolders**: off exports only the files directly in the chosen folder or project.
+- **Formats**: tick what you need.
+- **Re-export**: write all ticked formats again, even when they are up to date.
+- **Scan only**: list the files and count what is left to export, without exporting.
+
+Then pick the target folder. The add-in remembers it and your choices.
+
+### What a run exports
+
+A run exports a file only when needed:
+
+- never exported, or a ticked format is missing (or its file was deleted): only the missing
+  formats are written;
+- the design changed in the cloud since the last export (a new version): all ticked formats
+  are written again;
+- otherwise the file is up to date and skipped.
+
+So a cancelled run continues where it stopped, ticking another format later adds just that
+format, and running the same scope again refreshes changed designs: a simple backup.
+
+### Files in the target folder
+
+| File | Purpose |
+|---|---|
+| `export-state.json` | cloud version and exported formats per file |
+| `scan-cache.json` | file lists of earlier scans. Walking the cloud folders is slow, so a run of the same scope offers to reuse the list. Answer **No** to rescan; only a rescan sees new, renamed or changed documents. |
+| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (not a design or drawing) or `FAIL` with the error |
+
+Keep these files with the export: moving the folder moves the state with it.
+
+### Names
+
+File and folder names are the cloud names with these changes: apostrophes are removed
+(`Tom's Team` becomes `Toms Team`), characters Windows forbids become `_`, names are cut to
+80 characters, and a second file with the same name in one folder becomes `Name_2`.
+
+## Limits
+
+- STEP holds bodies only. A design with sketches but no bodies gives an empty STEP; use the
+  Fusion archive or sketch DXF for it.
+- Drawings cannot be saved as an editable file outside the cloud; PDF and DWG are what Fusion
+  offers. They can be recreated from the design archive.
+- DWG export uses `createDWGExportOptions`, a
+  [preview API](https://help.autodesk.com/cloudhelp/ENU/Fusion-360-API/files/drawing_DrawingExportManager.htm)
+  that Autodesk may change. If your Fusion lacks it, the log shows `FAIL` for DWG and the run
+  goes on.
+- Each document is opened in Fusion to export it, so a large export takes hours. Fusion is
+  busy meanwhile; the progress dialog can cancel it.
+
+## Development
+
+The add-in is one Python file, `FusionExport/FusionExport.py`. The tests cover the logic that
+does not need Fusion (names, what to export) with a stub of the `adsk` modules:
+
+```sh
+python -m pip install ruff==0.17.3 pytest==9.2.0
+ruff format --check . && ruff check . && pytest
+```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for issues, pull requests and releases.
+
+## License
+
+GPL-3.0-or-later, see [LICENSE](LICENSE). Not affiliated with Autodesk.

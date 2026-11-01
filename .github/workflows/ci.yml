@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  # The ruleset requires this check by name.
+  required:
+    runs-on: ubuntu-26.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      # A venv: the runner's system Python refuses pip installs (PEP 668).
+      - run: |
+          python3 -m venv .venv
+          .venv/bin/pip install ruff==0.17.3 pytest==9.2.0
+      - run: .venv/bin/ruff format --check .
+      - run: .venv/bin/ruff check .
+      - run: .venv/bin/pytest -q
+      - run: scripts/check-version.sh

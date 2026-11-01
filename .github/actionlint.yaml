@@ -1,0 +1,4 @@
+# actionlint's built-in runner list predates the ubuntu-26.04 image (GA 2026-09-17).
+self-hosted-runner:
+  labels:
+    - ubuntu-26.04

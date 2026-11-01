@@ -1,0 +1,9 @@
+name: Feature
+description: Something is missing
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What do you want to do, and why?
+    validations:
+      required: true

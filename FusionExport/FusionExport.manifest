@@ -1,0 +1,13 @@
+{
+	"autodeskProduct":	"Fusion",
+	"type":	"addin",
+	"id":	"7c1f3a52-5d8e-4b8a-9f2e-3e6b1d0a4c21",
+	"author":	"Thomas Kroll",
+	"description":	{
+		"":	"Bulk export of Fusion designs and drawings: Fusion archive (f3d/f3z), STEP, sketch DXF, drawing PDF/DWG."
+	},
+	"version":	"0.1.0",
+	"runOnStartup":	true,
+	"supportedOS":	"windows|mac",
+	"editEnabled":	true
+}

@@ -1,0 +1,25 @@
+name: Bug
+description: Something does not work
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened, and what did you expect?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Scope and formats you chose in the dialog.
+  - type: textarea
+    id: log
+    attributes:
+      label: Lines from export-log.txt or the error message
+      render: text
+  - type: input
+    id: versions
+    attributes:
+      label: Add-in version, Fusion version, operating system
+    validations:
+      required: true
