@@ -36,7 +36,7 @@ UPDATE_EVENT_ID = "thomasFusionExportUpdate"
 REPO = "nofuturekid/fusion-export"
 ADDIN_DIR = os.path.dirname(os.path.abspath(__file__))
 CHECK_INTERVAL = 24 * 3600  # seconds between update checks
-PANEL_ID = "SolidScriptsAddinsPanel"
+
 MAX_NAME = 80  # keep Windows paths below 260 characters
 SETTINGS = os.path.join(os.path.dirname(__file__), "settings.json")
 META_DIR = ".fusion-export"  # in the target folder: state, scan cache and log
@@ -458,12 +458,13 @@ def export_drawing(drawing, folder, name, keys, status):
 
 def export_document(doc, folder, name, keys, status=lambda step: None):
     os.makedirs(folder, exist_ok=True)
-    design = adsk.fusion.Design.cast(doc.products.itemByProductType("DesignProductType"))
-    if design:
-        return export_design(design, folder, name, keys, status)
+    # Drawing first: itemByProductType raises (instead of returning None) on a drawing.
     drawing_doc = adsk.drawing.DrawingDocument.cast(doc)
     if drawing_doc and drawing_doc.drawing:
         return export_drawing(drawing_doc.drawing, folder, name, keys, status)
+    design = adsk.fusion.Design.cast(doc.products.itemByProductType("DesignProductType"))
+    if design:
+        return export_design(design, folder, name, keys, status)
     raise RuntimeError("neither a design nor a drawing")
 
 
@@ -970,14 +971,31 @@ def run(context):
         on_created = CreatedHandler()
         cmd_def.commandCreated.add(on_created)
         handlers.append(on_created)
-        panel = ui.allToolbarPanels.itemById(PANEL_ID)
-        if panel and not panel.controls.itemById(CMD_ID):
-            control = panel.controls.addCommand(cmd_def)
-            control.isPromotedByDefault = True
-            control.isPromoted = True
+        for panel in addin_panels(ui):
+            if not panel.controls.itemById(CMD_ID):
+                control = panel.controls.addCommand(cmd_def)
+                control.isPromotedByDefault = True
+                control.isPromoted = True
         check_in_background()
     except Exception:
         ui.messageBox("Fusion Export failed to start:\n" + traceback.format_exc())
+
+
+def is_addin_panel(panel_id):
+    """Toolbar panels that hold Scripts and Add-Ins: one per workspace (Design, Drawing, ...),
+    each with its own id, e.g. SolidScriptsAddinsPanel."""
+    lower = panel_id.lower()
+    return "scripts" in lower and "addin" in lower
+
+
+def addin_panels(ui):
+    panels = [p for p in items_of(ui.allToolbarPanels) if is_addin_panel(p.id)]
+    try:  # record what this Fusion has, for bug reports
+        with open(os.path.join(ADDIN_DIR, "panels.txt"), "w", encoding="utf-8") as f:
+            f.write("\n".join(p.id for p in panels) + "\n")
+    except OSError:
+        pass
+    return panels
 
 
 def stop(context):
@@ -985,8 +1003,7 @@ def stop(context):
     ui = app.userInterface
     app.unregisterCustomEvent(EVENT_ID)
     app.unregisterCustomEvent(UPDATE_EVENT_ID)
-    panel = ui.allToolbarPanels.itemById(PANEL_ID)
-    if panel:
+    for panel in addin_panels(ui):
         control = panel.controls.itemById(CMD_ID)
         if control:
             control.deleteMe()

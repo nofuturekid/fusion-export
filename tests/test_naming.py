@@ -67,3 +67,10 @@ def test_name_among_matches_the_names_a_scan_gives():
     siblings = [Cloud("a", "Part"), Cloud("b", "part"), Cloud("c", "Other")]
     scanned = fe.unique_names(s.name for s in siblings)
     assert [fe.name_among(siblings, s) for s in siblings] == scanned
+
+
+def test_button_goes_into_the_addins_panel_of_every_workspace():
+    # Drawings have their own Utilities > Add-Ins panel; a design-only button cannot export them.
+    assert fe.is_addin_panel("SolidScriptsAddinsPanel")
+    assert fe.is_addin_panel("DrawingScriptsAddinsPanel")
+    assert not fe.is_addin_panel("SolidCreatePanel")

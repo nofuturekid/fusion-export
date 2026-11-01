@@ -5,3 +5,4 @@ __pycache__/
 dist/
 # written by the add-in at runtime
 FusionExport/settings.json
+FusionExport/panels.txt
