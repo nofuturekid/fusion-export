@@ -10,6 +10,8 @@ Every change goes through an issue and a pull request, also the maintainer's:
 4. Commits are signed; `main` only accepts signed commits and a linear history.
 5. The maintainer merges fast-forward only, by pushing the green PR head to `main`, so your
    commits keep their hashes and signatures. The merge button is not used.
+   A separate ruleset without bypass requires the `required` check on the pushed commit, so
+   not even the maintainer can push to `main` before CI is green.
 
 Changes that come from someone else (a merged pull request, or an issue or report that led to
 the change) are credited at the end of their `CHANGELOG.md` line as `(#N, thanks @handle)`.
