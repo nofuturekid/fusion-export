@@ -130,3 +130,10 @@ def test_upload_cannot_escape_its_folder(tmp_path):
     item = (str(tmp_path), fe.safe("..\\..\\evil"), "id-7", "../x", 1)
     path = fe.upload_path(item)
     assert os.path.dirname(path) == str(tmp_path)
+
+
+def test_design_without_a_ticked_format_is_not_counted_as_up_to_date():
+    # A run with only "Other files" ticked must not report its designs as backed up.
+    only_uploads = {"orig": True}
+    assert fe.applicable("f3d", only_uploads) == []
+    assert fe.applicable("dxf", only_uploads) == ["orig"]

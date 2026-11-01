@@ -80,7 +80,7 @@ format, and running the same scope again refreshes changed designs: a simple bac
 |---|---|
 | `export-state.json` | cloud version and exported formats per file |
 | `scan-cache.json` | file lists of earlier scans with their date. A run of the same scope asks: **Yes = Resume** uses the list and starts at once (for continuing a cancelled run), **No = Fresh scan** walks the cloud again. Only a fresh scan sees documents changed, added or renamed since: use it for backups. |
-| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (a native file the add-in cannot export, such as an electronics library) or `FAIL` with the error; `SCAN` lines with how long a scan took and where |
+| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `UNTICKED` (no ticked format applies to the file, nothing exported), `OTHER` (a native file the add-in cannot export, such as an electronics library) or `FAIL` with the error; `SCAN` lines with how long a scan took and where |
 
 All three live in `.fusion-export/` inside the target folder (older exports that kept them in
 the target folder itself are moved there on the next run). Keep that folder with the export:

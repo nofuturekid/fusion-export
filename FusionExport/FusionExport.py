@@ -132,14 +132,19 @@ def upload_path(item):
     return os.path.join(folder, name)
 
 
+def applicable(ext, fmt):
+    """Ticked formats that apply to a file of this extension."""
+    k = kind(ext)
+    return [key for key, _, _, applies in FORMATS if applies == k and fmt.get(key)]
+
+
 def todo(item, fmt, state, force=False):
     """Formats to (re)write for a scanned item (folder, name, file id, ext, version).
 
     Everything ticked when forced, never exported, or the cloud version changed since the last
     export; otherwise only ticked formats that are not exported yet or whose file is gone."""
     folder, name, file_id, ext, version = item
-    k = kind(ext)
-    ticked = [key for key, _, _, applies in FORMATS if applies == k and fmt.get(key)]
+    ticked = applicable(ext, fmt)
     entry = state.get(file_id)
     if force or not entry or entry.get("version") != version:
         return ticked
@@ -447,7 +452,7 @@ class Run:
 
     def __init__(self, root, fmt, force):
         self.root, self.fmt, self.force = root, fmt, force
-        self.counts = {"OK": 0, "SKIP": 0, "OTHER": 0, "FAIL": 0}
+        self.counts = {"OK": 0, "SKIP": 0, "UNTICKED": 0, "OTHER": 0, "FAIL": 0}
         self.state_path = meta_path(root, STATE_FILE)
         self.state = load_json(self.state_path, {})
         self.log = open(meta_path(root, LOG_FILE), "a", encoding="utf-8")
@@ -494,6 +499,9 @@ def export_items(app, ui, run, items):
             adsk.doEvents()
             if not kind(item[3]):
                 run.note("OTHER", item, item[3])
+                continue
+            if not applicable(item[3], run.fmt):
+                run.note("UNTICKED", item, "no ticked format applies")
                 continue
             keys = todo(item, run.fmt, run.state, run.force)
             if not keys:
@@ -813,6 +821,7 @@ def run_export(app, ui, params):
     ui.messageBox(
         f"{len(items)} files in scope\n"
         f"exported: {c['OK']}\nup to date: {c['SKIP']}\n"
+        f"not exported, no ticked format applies: {c['UNTICKED']}\n"
         f"not exportable (electronics, ...): {c['OTHER']}\nfailed: {c['FAIL']}\n\n"
         f"Details: {meta_path(root, LOG_FILE)}"
     )
