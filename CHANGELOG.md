@@ -18,6 +18,7 @@ the change) are credited at the end of their line as `(#N, thanks @handle)`.
   re-export and scan only.
 - Exports designs as Fusion archive (`.f3d`, or `.f3z` with external references), STEP and
   sketch DXF, and drawings as PDF and DWG.
+- Files uploaded to Fusion (DXF, STEP, images, ...) are downloaded as they are (#18).
 - Export tree `<hub>/<project>/<folders>/` with names safe for shells and Windows.
 - "Keep cloud folder path" off exports a folder or project straight into the target folder
   (#10).

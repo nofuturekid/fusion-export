@@ -11,6 +11,7 @@ at a time.
 | Sketch DXF | `Name - Sketches/<sketch>.dxf`: every sketch of every component |
 | Drawing PDF | `Drawing.pdf`: all sheets in one file |
 | Drawing DWG | `Drawing.dwg` (uses a preview API of Fusion, see below) |
+| Uploaded files | DXF, STEP, images and other files uploaded to Fusion, downloaded as they are |
 
 Files land in `<target>/<hub>/<project>/<folders>/`, the same tree as in the Data Panel, so
 partial exports add up to one tree; with *Keep cloud folder path* off they go straight into
@@ -79,7 +80,7 @@ format, and running the same scope again refreshes changed designs: a simple bac
 |---|---|
 | `export-state.json` | cloud version and exported formats per file |
 | `scan-cache.json` | file lists of earlier scans with their date. A run of the same scope asks: **Yes = Resume** uses the list and starts at once (for continuing a cancelled run), **No = Fresh scan** walks the cloud again. Only a fresh scan sees documents changed, added or renamed since: use it for backups. |
-| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (not a design or drawing) or `FAIL` with the error; `SCAN` lines with how long a scan took and where |
+| `export-log.txt` | one line per file and run: `OK`, `SKIP` (up to date), `OTHER` (a native file the add-in cannot export, such as an electronics library) or `FAIL` with the error; `SCAN` lines with how long a scan took and where |
 
 All three live in `.fusion-export/` inside the target folder (older exports that kept them in
 the target folder itself are moved there on the next run). Keep that folder with the export:
@@ -95,6 +96,8 @@ File and folder names are the cloud names with these changes: apostrophes are re
 
 - STEP holds bodies only. A design with sketches but no bodies gives an empty STEP; use the
   Fusion archive or sketch DXF for it.
+- Electronics files (libraries, schematics, boards) are not exported yet; the log lists them
+  as `OTHER`.
 - Drawings cannot be saved as an editable file outside the cloud; PDF and DWG are what Fusion
   offers. They can be recreated from the design archive.
 - DWG export uses `createDWGExportOptions`, a

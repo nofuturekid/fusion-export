@@ -55,12 +55,16 @@ ACTIVE_SCOPE, FOLDER_SCOPE, PROJECT_SCOPE, PROJECTS_SCOPE, EVERYTHING_SCOPE = ra
 
 DESIGN_EXTENSIONS = ("f3d", "f3z")
 DRAWING_EXTENSIONS = ("f2d",)
+# Native Fusion files other than designs and drawings (electronics, ...): DataFile.download
+# refuses them and there is no export for them yet.
+NATIVE_EXTENSIONS = ("flbr", "fsch", "fbrd", "f3dt")
 FORMATS = [  # (key, dialog label, default, file kind it applies to)
     ("f3d", "Fusion archive (f3d/f3z)", True, "design"),
     ("step", "STEP", True, "design"),
     ("dxf", "Sketches as DXF", False, "design"),
     ("pdf", "Drawings as PDF", False, "drawing"),
     ("dwg", "Drawings as DWG (preview API)", False, "drawing"),
+    ("orig", "Other files as uploaded (DXF, STEP, images, ...)", True, "upload"),
 ]
 
 handlers = []
@@ -104,15 +108,17 @@ def kind(ext):
         return "design"
     if ext in DRAWING_EXTENSIONS:
         return "drawing"
-    return None
+    if ext in NATIVE_EXTENSIONS:
+        return None
+    return "upload"  # a file someone uploaded: downloadable as it is
 
 
 def output_exists(folder, name, fmt_key):
     base = os.path.join(folder, name)
     if fmt_key == "f3d":
         return os.path.exists(base + ".f3d") or os.path.exists(base + ".f3z")
-    if fmt_key == "dxf":
-        return True  # a design without sketches has no DXF; trust the state
+    if fmt_key in ("dxf", "orig"):
+        return True  # no fixed file name (sketch folder, uploaded name); trust the state
     return os.path.exists(f"{base}.{fmt_key}")
 
 
@@ -274,7 +280,7 @@ def all_projects(app):
     return projects
 
 
-def scan(ui, root, start, recursive):
+def scan(ui, root, start, recursive, label):
     """start: list of (DataFolder, target path). Returns items, or None when cancelled."""
     dlg = ui.createProgressDialog()
     dlg.isCancelButtonShown = True
@@ -292,11 +298,11 @@ def scan(ui, root, start, recursive):
         for folder, path in start:
             collect(folder, path, items, tick, recursive, timer)
     except Cancelled:
-        append_log(root, f"SCAN\t(cancelled)\t{timer.summary(len(items))}")
+        append_log(root, f"SCAN\t{label} (cancelled)\t{timer.summary(len(items))}")
         return None
     finally:
         dlg.hide()
-    append_log(root, f"SCAN\t{os.path.relpath(start[0][1], root)}\t{timer.summary(len(items))}")
+    append_log(root, f"SCAN\t{label}\t{timer.summary(len(items))}")
     return items
 
 
@@ -320,7 +326,7 @@ def scan_cached(ui, root, key, start, recursive):
         )
         if answer == adsk.core.DialogResults.DialogYes:
             return [(os.path.join(root, r), n, i, e, v) for r, n, i, e, v in cached["items"]]
-    items = scan(ui, root, start, recursive)
+    items = scan(ui, root, start, recursive, key)
     if items is not None:
         cache[key] = {
             "scanned": datetime.datetime.now().strftime("%Y-%m-%d %H:%M"),
@@ -446,6 +452,15 @@ class Run:
         self.note("OK", item, f"v{item[4]} " + " ".join(notes))
         return notes
 
+    def download(self, data_file, item):
+        """An uploaded file as it is, into its folder under its own name."""
+        os.makedirs(item[0], exist_ok=True)
+        if not data_file.download(item[0], None):
+            raise RuntimeError("download returned False")
+        record(self.state, item, ["orig"])
+        save_json(self.state_path, self.state)
+        self.note("OK", item, f"v{item[4]} downloaded")
+
     def close(self):
         self.log.close()
 
@@ -472,6 +487,9 @@ def export_items(app, ui, run, items):
                 data_file = app.data.findFileById(item[2])
                 if not data_file:
                     raise RuntimeError("file not found in the cloud, rescan")
+                if kind(item[3]) == "upload":
+                    run.download(data_file, item)
+                    continue
                 doc = app.documents.open(data_file, True)
                 try:
                     run.export(doc, item, keys)
@@ -736,11 +754,13 @@ def run_export(app, ui, params):
         state = load_json(meta_path(root, STATE_FILE), {})
         designs = sum(kind(it[3]) == "design" for it in items)
         drawings = sum(kind(it[3]) == "drawing" for it in items)
+        uploads = sum(kind(it[3]) == "upload" for it in items)
         left = sum(bool(kind(it[3]) and todo(it, fmt, state, force)) for it in items)
         ui.messageBox(
             "Scan finished and saved, nothing exported.\n\n"
             f"files: {len(items)}\ndesigns: {designs}\ndrawings: {drawings}\n"
-            f"other files: {len(items) - designs - drawings}\n"
+            f"uploaded files (DXF, STEP, images, ...): {uploads}\n"
+            f"not exportable (electronics, ...): {len(items) - designs - drawings - uploads}\n"
             f"to export with the ticked formats: {left}\n\n"
             "Run the same scope again and answer 'Yes' (Resume) to export without rescanning.\n"
             f"Scan timing: SCAN line in {meta_path(root, LOG_FILE)}"
@@ -756,7 +776,7 @@ def run_export(app, ui, params):
     ui.messageBox(
         f"{len(items)} files in scope\n"
         f"exported: {c['OK']}\nup to date: {c['SKIP']}\n"
-        f"other files: {c['OTHER']}\nfailed: {c['FAIL']}\n\n"
+        f"not exportable (electronics, ...): {c['OTHER']}\nfailed: {c['FAIL']}\n\n"
         f"Details: {meta_path(root, LOG_FILE)}"
     )
 

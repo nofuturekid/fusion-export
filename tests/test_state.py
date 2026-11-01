@@ -25,7 +25,7 @@ def test_drawing_formats_do_not_apply_to_designs_and_vice_versa(tmp_path):
     assert fe.todo(drawing, DESIGN_FMT, {}) == ["pdf"]
 
 
-def test_other_files_get_nothing(tmp_path):
+def test_files_get_nothing_when_their_format_is_not_ticked(tmp_path):
     pdf = (str(tmp_path), "Datasheet", "id-3", "pdf", 1)
     assert fe.todo(pdf, DESIGN_FMT, {}) == []
 
@@ -91,3 +91,26 @@ def test_broken_state_file_starts_empty_instead_of_failing(tmp_path):
     path = tmp_path / "export-state.json"
     path.write_text("{broken")
     assert fe.load_json(str(path), {}) == {}
+
+
+def test_uploaded_files_are_downloaded_as_they_are(tmp_path):
+    # DXF, STEP or images someone uploaded belong in a backup like the designs.
+    upload = (str(tmp_path), "Door Panel Left.dxf", "id-4", "dxf", 1)
+    fmt = dict(DESIGN_FMT, orig=True)
+    assert fe.kind("dxf") == fe.kind("jpg") == "upload"
+    assert fe.todo(upload, fmt, {}) == ["orig"]
+
+
+def test_downloaded_upload_is_skipped_until_it_changes(tmp_path):
+    upload = (str(tmp_path), "Door Panel Left.dxf", "id-4", "dxf", 1)
+    fmt = dict(DESIGN_FMT, orig=True)
+    state = {"id-4": {"version": 1, "done": ["orig"]}}
+    assert fe.todo(upload, fmt, state) == []
+    assert fe.todo(upload[:4] + (2,), fmt, state) == ["orig"]
+
+
+def test_native_electronics_files_are_left_out(tmp_path):
+    # Fusion refuses to download native files and the add-in has no export for them.
+    library = (str(tmp_path), "Power_Symbols", "id-5", "flbr", 1)
+    assert fe.kind("flbr") is None
+    assert fe.todo(library, dict(DESIGN_FMT, orig=True), {}) == []
