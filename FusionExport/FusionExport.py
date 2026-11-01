@@ -376,10 +376,11 @@ def export_sketches(design, folder, name):
     return len(sketches)
 
 
-def export_design(design, folder, name, keys):
+def export_design(design, folder, name, keys, status):
     em = design.exportManager
     written, notes = [], []
     if "f3d" in keys:
+        status("Fusion archive")
         ext = ".f3z" if has_references(design) else ".f3d"
         opts = em.createFusionArchiveExportOptions(
             os.path.join(folder, name + ext), design.rootComponent
@@ -392,6 +393,7 @@ def export_design(design, folder, name, keys):
         written.append("f3d")
         notes.append(ext)
     if "step" in keys:
+        status("STEP")
         opts = em.createSTEPExportOptions(
             os.path.join(folder, name + ".step"), design.rootComponent
         )
@@ -400,15 +402,17 @@ def export_design(design, folder, name, keys):
         written.append("step")
         notes.append(".step")
     if "dxf" in keys:
+        status("sketch DXF")
         notes.append(f"{export_sketches(design, folder, name)} sketch DXF")
         written.append("dxf")
     return written, notes
 
 
-def export_drawing(drawing, folder, name, keys):
+def export_drawing(drawing, folder, name, keys, status):
     em = drawing.exportManager
     written, notes = [], []
     if "pdf" in keys:
+        status("PDF")
         opts = em.createPDFExportOptions(os.path.join(folder, name + ".pdf"))
         opts.openPDF = False
         if not em.execute(opts):
@@ -416,6 +420,7 @@ def export_drawing(drawing, folder, name, keys):
         written.append("pdf")
         notes.append(".pdf")
     if "dwg" in keys:
+        status("DWG")
         if not hasattr(em, "createDWGExportOptions"):
             raise RuntimeError("this Fusion version has no DWG export in its API")
         opts = em.createDWGExportOptions(os.path.join(folder, name + ".dwg"))
@@ -426,14 +431,14 @@ def export_drawing(drawing, folder, name, keys):
     return written, notes
 
 
-def export_document(doc, folder, name, keys):
+def export_document(doc, folder, name, keys, status=lambda step: None):
     os.makedirs(folder, exist_ok=True)
     design = adsk.fusion.Design.cast(doc.products.itemByProductType("DesignProductType"))
     if design:
-        return export_design(design, folder, name, keys)
+        return export_design(design, folder, name, keys, status)
     drawing_doc = adsk.drawing.DrawingDocument.cast(doc)
     if drawing_doc and drawing_doc.drawing:
-        return export_drawing(drawing_doc.drawing, folder, name, keys)
+        return export_drawing(drawing_doc.drawing, folder, name, keys, status)
     raise RuntimeError("neither a design nor a drawing")
 
 
@@ -455,8 +460,8 @@ class Run:
         self.log.write(f"{status}\t{self.rel(item)}\t{msg}\n")
         self.log.flush()
 
-    def export(self, doc, item, keys):
-        written, notes = export_document(doc, item[0], item[1], keys)
+    def export(self, doc, item, keys, status=lambda step: None):
+        written, notes = export_document(doc, item[0], item[1], keys, status)
         record(self.state, item, written)
         save_json(self.state_path, self.state)
         self.note("OK", item, f"v{item[4]} " + " ".join(notes))
@@ -501,9 +506,16 @@ def export_items(app, ui, run, items):
                 if kind(item[3]) == "upload":
                     run.download(data_file, item)
                     continue
+                progress.message = f"%v / %m\n{run.rel(item)}\nOpening ..."
+                adsk.doEvents()
                 doc = app.documents.open(data_file, True)
+
+                def status(step, item=item):
+                    progress.message = f"%v / %m\n{run.rel(item)}\nWriting {step} ..."
+                    adsk.doEvents()
+
                 try:
-                    run.export(doc, item, keys)
+                    run.export(doc, item, keys, status)
                 finally:
                     doc.close(False)
             except Exception:
@@ -726,7 +738,21 @@ def run_export(app, ui, params):
             if not keys:
                 ui.messageBox("No ticked format applies to this document.")
                 return
-            notes = run.export(app.activeDocument, item, keys)
+            progress = ui.createProgressDialog()
+            progress.show("Fusion export", "Starting ...", 0, len(keys))
+            done = []
+
+            def status(step):
+                # Fusion is busy during each export call; this at least names the current one.
+                progress.message = f"{item[1]}\nWriting {step} ({len(done) + 1} of {len(keys)})"
+                progress.progressValue = len(done)
+                done.append(step)
+                adsk.doEvents()
+
+            try:
+                notes = run.export(app.activeDocument, item, keys, status)
+            finally:
+                progress.hide()
         finally:
             run.close()
         ui.messageBox(f"Exported {' '.join(notes)}\n{os.path.join(item[0], item[1])}")
