@@ -137,3 +137,18 @@ def test_design_without_a_ticked_format_is_not_counted_as_up_to_date():
     only_uploads = {"orig": True}
     assert fe.applicable("f3d", only_uploads) == []
     assert fe.applicable("dxf", only_uploads) == ["orig"]
+
+
+def test_assembly_archive_written_as_f3z_f3d_is_renamed_so_the_next_run_skips_it(tmp_path):
+    # Fusion writes Name.f3z.f3d; left like that, every run would export the assembly again.
+    touch(tmp_path, "Bracket.f3z.f3d", "Bracket.step")
+    fe.fix_archive_name(str(tmp_path / "Bracket.f3z"))
+    state = {"id-1": {"version": 3, "done": ["f3d", "step"]}}
+    assert fe.todo(design(tmp_path), DESIGN_FMT, state) == []
+    assert not (tmp_path / "Bracket.f3z.f3d").exists()
+
+
+def test_plain_f3d_archive_is_left_alone(tmp_path):
+    touch(tmp_path, "Bracket.f3d")
+    fe.fix_archive_name(str(tmp_path / "Bracket.f3d"))
+    assert (tmp_path / "Bracket.f3d").exists()

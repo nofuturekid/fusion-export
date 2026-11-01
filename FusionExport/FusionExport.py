@@ -142,6 +142,14 @@ def output_exists(folder, name, fmt_key):
     return os.path.exists(f"{base}.{fmt_key}")
 
 
+def fix_archive_name(path):
+    """Fusion appends .f3d to every archive path, so Name.f3z arrives as Name.f3z.f3d; give it
+    the name output_exists() looks for, or the design is exported again on every run."""
+    written = path + ".f3d"
+    if path.endswith(".f3z") and os.path.exists(written):
+        os.replace(written, path)
+
+
 def upload_path(item):
     """Target file of an uploaded file: its export name, plus its extension if the name lacks
     it. Both are cleaned like every other name, so the file stays inside its folder."""
@@ -412,6 +420,7 @@ def export_design(design, folder, name, keys, status):
         )
         if not em.execute(opts):
             raise RuntimeError("archive export returned False")
+        fix_archive_name(os.path.join(folder, name + ext))
         other = os.path.join(folder, name + (".f3d" if ext == ".f3z" else ".f3z"))
         if os.path.exists(other):  # references were added or removed since the last export
             os.remove(other)

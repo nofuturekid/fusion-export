@@ -9,6 +9,11 @@ the change) are credited at the end of their line as `(#N, thanks @handle)`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Designs with external references are saved as `.f3z` instead of `.f3z.f3d`, so they are no
+  longer exported again on every run (#33).
+
 ## [0.1.0] - 2026-11-01
 
 ### Added
